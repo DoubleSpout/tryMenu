@@ -126,7 +126,7 @@ function Mysql_CLass:query_item()
 	 
 	 self.menuTable = res --将查出的table保存在 self.menuTable 中
 	 
-	 local forceUpdate = true
+	 local forceUpdate = 0
 	
 
 	 for i,v in ipairs(self.menuTable) do --循环剔除值为nil的属性
@@ -143,14 +143,14 @@ function Mysql_CLass:query_item()
 		    local writetime = dateLib(v['writetime'])
 
 		    if  forceUpdate and updatetime and writetime>updatetime then
-			forceUpdate = false
+			forceUpdate = forceUpdate + 1
 		    end
 		    
 		
 		end 
 	 end
 	 
-	 if forceUpdate == false then
+	 if forceUpdate == 0 then
 		return nil,"cache"
 	 end
 
