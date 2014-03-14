@@ -3,6 +3,7 @@ module("mysql_class2", package.seeall)
 
 local mysql = require "resty.mysql"
 local dbConn = require "conn"["connTable"]
+local dateLib = require "date"
 
 local ERR_MYSQL_LIB = "could not open mysql library"
 local ERR_MYSQL_DB = "could not open mysql database"
@@ -83,7 +84,15 @@ function Mysql_CLass:query_item()
 	 if not self.reqTable.city then	        
 		return ERR_NO_CITY, nil
 	 end
+
+	 local updatetime = self.reqTable.updatetime -- 接受更新时间时间戳
+
+	 if updatetime then -- 将updatetime转为dateLib对象
+		updatetime = dateLib(tonumber(updatetime))
+	 end
 	
+	
+
 	 local err,db = self:connect() --连接mysql数据库
 
 	 if err then
@@ -93,10 +102,10 @@ function Mysql_CLass:query_item()
 	 
 	 local now = os.date("%Y-%m-%d %H:%M:%S", os.time())
 
-	 local property = "GAME_LIST_ITEM.Id, ItemType, Itemname, ItemNewTip, ItemExtraTip, Changed, parentId, Icon, ItemID, ItemUrl, OpenType, Width, Height, ItemParent, mycategorycode, HelpURL, ServerVersion, EName, channelcode, rootcode, mygamecode, WatchCrash, ServerID, GameServerAddr, GameServerPort, MinVer, MaxVer"
-	 local sqlCmd = "select "..property.." from GAME_LIST_ITEM left join GAME_SITE on (GAME_LIST_ITEM.GAME_SITEId = GAME_SITE.Id) left join Game on (GAME_LIST_ITEM.GameId = Game.Id) WHERE GAME_LIST_ITEM.is_show=1 AND GAME_SITE.sitename="..ngx.quote_sql_str(self.reqTable.city).." AND GAME_LIST_ITEM.BeginTime < '"..now.."' AND GAME_LIST_ITEM.EndTime > '"..now.."' ORDER BY GAME_LIST_ITEM.Iorder DESC;"
+	 local property = "GAME_LIST_ITEM.Id, ItemType, Itemname, ItemNewTip, ItemExtraTip, Changed, parentId, Icon, ItemID, ItemUrl, OpenType, Width, Height, ItemParent, mycategorycode, HelpURL, ServerVersion, EName, channelcode, rootcode, mygamecode, WatchCrash, ServerID, GameServerAddr, GameServerPort, MinVer, MaxVer, MaxUser, GameTypeName, GAME_LIST_ITEM.writetime"
+	 local sqlCmd = "select "..property.." from GAME_LIST_ITEM left join GAME_SITE on (GAME_LIST_ITEM.GAME_SITEId = GAME_SITE.Id) left join Game on (GAME_LIST_ITEM.GameId = Game.Id) WHERE GAME_LIST_ITEM.is_show=1 AND GAME_SITE.sitename="..ngx.quote_sql_str(self.reqTable.city).." AND GAME_LIST_ITEM.BeginTime < '"..now.."' AND GAME_LIST_ITEM.EndTime > '"..now.."' AND (Game.IsRun = 1 or Game.IsRun IS NULL)  ORDER BY GAME_LIST_ITEM.Iorder ASC;"
 	 --local sqlCmd = "select "..property.." from GAME_LIST_ITEM left join GAME_SITE on (GAME_LIST_ITEM.GAME_SITEId = GAME_SITE.Id) left join Game on (GAME_LIST_ITEM.GameId = Game.Id) WHERE GAME_LIST_ITEM.is_show=1 AND GAME_SITE.sitename="..ngx.quote_sql_str(self.reqTable.city).." ORDER BY GAME_LIST_ITEM.Iorder DESC;"	  
-	 --ngx.log(ngx.ERR, sqlCmd) 
+	 -- ngx.log(ngx.ERR, sqlCmd) 
 	 
 	 local res, err, errno, sqlstate =  --查询 ApiServices 表
 		db:query(sqlCmd)
@@ -117,14 +126,36 @@ function Mysql_CLass:query_item()
 	 
 	 self.menuTable = res --将查出的table保存在 self.menuTable 中
 	 
+	 local forceUpdate = true
+	
+
 	 for i,v in ipairs(self.menuTable) do --循环剔除值为nil的属性
 		for key in pairs(v) do 
-		    if v[key] == ngx.null then --lua中返回的mysql数据null值为ngx.null
-			v[key] = ""
+		    
+		    if v[key] == ngx.null or v[key] == '' or v[key] == 'NULL' then --lua中返回的mysql数据null值为ngx.null
+			v[key] = nil
 		    end
+
+		    if v['ItemType'] == 'GAME_ROOT' then
+		       v['updatetime'] = tostring(os.time())
+		    end
+
+		    local writetime = dateLib(v['writetime'])
+
+		    if  forceUpdate and updatetime and writetime>updatetime then
+			forceUpdate = false
+		    end
+		    
+		
 		end 
 	 end
 	 
+	 if forceUpdate == false then
+		return nil,"cache"
+	 end
+
+	 self.menuTable = self:filterEmpty() -- 去除空房间的节点
+
 	 err = self:genJsonTable() --生成输出的JSON类型的table
 
 	 if err then --生成json类型table出错
@@ -208,4 +239,84 @@ function Mysql_CLass:insertChild(curObj,item,num)
 	table.insert(curObj,item)  --将匹配的节点插入指定的Children中
 	self.removeKey = num		 --记录将要删除的self.menuTable项的位置
 	self.hasFound = 1
+end
+
+
+
+function Mysql_CLass:filterEmpty()
+	
+	local tempTable = {}
+	local removeC1
+	local removeC2
+	local removeObj
+
+	local length1, removeIds1 = self:getRemoveIds(self.menuTable, 'GAME_CHANNEL')
+
+	if length1 >0 then
+		removeC1 = self:RemoveByIds(self.menuTable, removeIds1)
+	end
+
+	local length2, removeIds2 = self:getRemoveIds(self.menuTable, 'GAME_KINDOF')
+
+	if length2 >0 then
+		removeC2 = self:RemoveByIds(self.menuTable, removeIds2)
+	end
+	
+	for i,v in ipairs(self.menuTable) do --第一步，循环结果，查找空channel
+		  
+		  if v then
+			table.insert(tempTable,v)
+		  end
+
+	 end
+
+	return tempTable;
+end
+
+
+function Mysql_CLass:getRemoveIds(objtable, typestr)
+	
+	local removeIds = {}
+
+
+	for i,v1 in ipairs(objtable) do --第一步，循环结果，查找空channel
+		
+		    if v1 and v1['ItemType'] == typestr then
+			local countParent = 0 
+			local curId = v1['Id']
+				for j,v2 in ipairs(objtable) do 
+					if v2 and v2['parentId'] == curId then
+						countParent = countParent+1;
+					end
+				end
+			if countParent == 0 then
+				table.insert(removeIds,curId)
+			end
+		    end
+
+	 end
+
+	 return table.getn(removeIds), removeIds
+end
+
+
+function Mysql_CLass:RemoveByIds(objtable, idsobj) -- 根据id数组删除对象中的内容
+	
+	local removeCount = 0;
+	local removeObj
+
+	for i,v in ipairs(objtable) do --循环大数组
+		if v then
+			for j,idv in ipairs(idsobj) do --循环id数组
+				if idv == v['Id'] then --当发现id匹配，删除大数组中的项
+					objtable[i] = false;
+					removeCount = removeCount + 1;
+					--removeObj = v
+					break;
+				end
+			end
+		end
+	 end
+
+	 return removeCount 
 end

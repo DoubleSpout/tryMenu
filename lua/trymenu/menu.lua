@@ -14,5 +14,10 @@ if err then
 	return ngx.say(err)
 end
 
+if json == 'cache' then	
+	ngx.say(json)
+	return
+end
+
 ngx.header["Content-Type"] = 'application/json; charset=UTF-8';
 ngx.say(json)
