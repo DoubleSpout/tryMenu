@@ -88,7 +88,7 @@ function Mysql_CLass:query_item()
 	 local updatetime = self.reqTable.updatetime -- 接受更新时间时间戳
 
 	 if updatetime then -- 将updatetime转为dateLib对象
-		updatetime = dateLib(tonumber(updatetime))
+		updatetime = dateLib(tonumber(updatetime)):tolocal()
 	 end
 	
 	
@@ -142,7 +142,11 @@ function Mysql_CLass:query_item()
 
 		    local writetime = dateLib(v['writetime'])
 
-		    if  forceUpdate and updatetime and writetime>updatetime then
+		    if  updatetime and writetime>updatetime then
+			--ngx.log(ngx.ERR, tostring(writetime))
+			--ngx.log(ngx.ERR, tostring(updatetime))
+			--ngx.log(ngx.ERR, tostring(self.reqTable.updatetime))
+			--ngx.log(ngx.ERR, '**********')
 			forceUpdate = forceUpdate + 1
 		    end
 		    
@@ -150,7 +154,7 @@ function Mysql_CLass:query_item()
 		end 
 	 end
 	 
-	 if forceUpdate == 0 then
+	 if updatetime and forceUpdate == 0 then
 		return nil,"cache"
 	 end
 
