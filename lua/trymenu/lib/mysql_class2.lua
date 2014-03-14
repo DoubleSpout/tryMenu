@@ -249,10 +249,10 @@ end
 
 function Mysql_CLass:filterEmpty()
 	
-	local tempTable = {}
-	local removeC1
-	local removeC2
-	local removeObj
+	local tempTable = {} --临时保存table对象
+	local removeC1       --删除的game channel数
+	local removeC2       --删除的game kindof数
+	local removeObj      
 
 	local length1, removeIds1 = self:getRemoveIds(self.menuTable, 'GAME_CHANNEL')
 
@@ -283,24 +283,24 @@ function Mysql_CLass:getRemoveIds(objtable, typestr)
 	local removeIds = {}
 
 
-	for i,v1 in ipairs(objtable) do --第一步，循环结果，查找空channel
+	for i,v1 in ipairs(objtable) do --第一步，循环菜单
 		
-		    if v1 and v1['ItemType'] == typestr then
-			local countParent = 0 
-			local curId = v1['Id']
-				for j,v2 in ipairs(objtable) do 
-					if v2 and v2['parentId'] == curId then
+		    if v1 and v1['ItemType'] == typestr then --如果是typestr类型
+			local countParent = 0 --找到父类的计数
+			local curId = v1['Id'] --暂存id
+				for j,v2 in ipairs(objtable) do --循环查找其子类
+					if v2 and v2['parentId'] == curId then --如果找到，计数+1
 						countParent = countParent+1;
 					end
 				end
-			if countParent == 0 then
+			if countParent == 0 then --如果没找到，则把这个id放入删除id数组
 				table.insert(removeIds,curId)
 			end
 		    end
 
 	 end
 
-	 return table.getn(removeIds), removeIds
+	 return table.getn(removeIds), removeIds --返回删除id数组长度和删除id数组
 end
 
 
