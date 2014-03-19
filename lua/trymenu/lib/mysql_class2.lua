@@ -58,6 +58,8 @@ function Mysql_CLass:connect()
 	      ngx.log(ngx.ERR, "mysql not connect: " .. err) --出错记录错误日志
 	      return ERR_MYSQL_DB  --返回错误code
         end
+	local res, err, errno, sqlstate =  --查询默认设置utf-8表
+		db:query("set names 'utf8';")
 	
 	return nil, db --连接成功返回ok状态码
 
