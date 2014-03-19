@@ -13,6 +13,7 @@ local ERR_NO_SUCH_CITY_MENU = "no such city menu"
 local ERR_HAS_NO_PARENTID = 'has no parentid item'
 
 
+
 Mysql_CLass = class('Mysql_CLass')
 
 function Mysql_CLass:initialize(reqTable)
@@ -102,30 +103,35 @@ function Mysql_CLass:query_item()
 		return err,nil
 	 end
 	 
-	 local now = os.date("%Y-%m-%d %H:%M:%S", os.time())
+	local sqlCmd = self:genSqlCmd(self.reqTable.city) -- 生成sql语句
 
-	 local property = "GAME_LIST_ITEM.Id, ItemType, Itemname, ItemNewTip, ItemExtraTip, Changed, parentId, Icon, ItemID, ItemUrl, OpenType, Width, Height, ItemParent, mycategorycode, HelpURL, ServerVersion, EName, channelcode, rootcode, mygamecode, WatchCrash, ServerID, GameServerAddr, GameServerPort, MinVer, MaxVer, MaxUser, GameTypeName, GAME_LIST_ITEM.writetime"
-	 local sqlCmd = "select "..property.." from GAME_LIST_ITEM left join GAME_SITE on (GAME_LIST_ITEM.GAME_SITEId = GAME_SITE.Id) left join Game on (GAME_LIST_ITEM.GameId = Game.Id) WHERE GAME_LIST_ITEM.is_show=1 AND GAME_SITE.sitename="..ngx.quote_sql_str(self.reqTable.city).." AND GAME_LIST_ITEM.BeginTime < '"..now.."' AND GAME_LIST_ITEM.EndTime > '"..now.."' AND (Game.IsRun = 1 or Game.IsRun IS NULL)  ORDER BY GAME_LIST_ITEM.Iorder ASC;"
-	 --local sqlCmd = "select "..property.." from GAME_LIST_ITEM left join GAME_SITE on (GAME_LIST_ITEM.GAME_SITEId = GAME_SITE.Id) left join Game on (GAME_LIST_ITEM.GameId = Game.Id) WHERE GAME_LIST_ITEM.is_show=1 AND GAME_SITE.sitename="..ngx.quote_sql_str(self.reqTable.city).." ORDER BY GAME_LIST_ITEM.Iorder DESC;"	  
-	 -- ngx.log(ngx.ERR, sqlCmd) 
+	 --ngx.log(ngx.ERR, sqlCmd) 
 	 
-	 local res, err, errno, sqlstate =  --查询 ApiServices 表
-		db:query(sqlCmd)
-
-	 self:close_conn() -- 关闭数据库连接
-	 
-
+	 local res, err, errno, sqlstate = db:query(sqlCmd) --查询 ApiServices 表
 	
 	 if not res then
 	      --如果表查询出错
+	      self:close_conn() -- 关闭数据库连接
 	      ngx.log(ngx.ERR, "get mysql data error: " .. err .. ": " .. errno .. ": ".. sqlstate .. ".") --出错记录错误日志	      
 	      return ERR_MYSQL_ERROR, nil
 	 end
 
-	 if table.getn(res) == 0 then --如果没有查到数据
-		return ERR_NO_SUCH_CITY_MENU,nil
+	 if table.getn(res) == 0 then --如果没有查到数据,使用默认的
+		
+		sqlCmd = self:genSqlCmd('main') -- 生成sql语句,使用main站点获取
+		res, err, errno, sqlstate =  db:query(sqlCmd) --查询 ApiServices 表
+		
+		if not res or table.getn(res)==0 then
+		      --如果表查询出错
+		      self:close_conn() -- 关闭数据库连接
+		      ngx.log(ngx.ERR, "get mysql data main site error: " .. err .. ": " .. errno .. ": ".. sqlstate .. ".") --出错记录错误日志	      
+		      return ERR_MYSQL_ERROR, nil
+		 end
+
 	 end
 	 
+	 self:close_conn() -- 关闭数据库连接
+
 	 self.menuTable = res --将查出的table保存在 self.menuTable 中
 	 
 	 local forceUpdate = 0
@@ -178,6 +184,18 @@ function Mysql_CLass:query_item()
 	 
 	 return nil,self.jsonStr
 	  
+end
+
+
+function Mysql_CLass:genSqlCmd(site) --创建数据库查询字符串
+
+	local now = os.date("%Y-%m-%d %H:%M:%S", os.time())
+
+	local property = "GAME_LIST_ITEM.Id, ItemType, Itemname, ItemNewTip, ItemExtraTip, Changed, parentId, Icon, ItemID, ItemUrl, OpenType, Width, Height, ItemParent, mycategorycode, HelpURL, ServerVersion, EName, channelcode, rootcode, mygamecode, WatchCrash, ServerID, GameServerAddr, GameServerPort, MinVer, MaxVer, MaxUser, GameTypeName, GAME_LIST_ITEM.writetime"
+	local sqlCmd = "select "..property.." from GAME_LIST_ITEM left join GAME_SITE on (GAME_LIST_ITEM.GAME_SITEId = GAME_SITE.Id) left join Game on (GAME_LIST_ITEM.GameId = Game.Id) WHERE GAME_LIST_ITEM.is_show=1 AND GAME_SITE.sitename="..ngx.quote_sql_str(site).." AND GAME_LIST_ITEM.BeginTime < '"..now.."' AND GAME_LIST_ITEM.EndTime > '"..now.."' AND (Game.IsRun = 1 or Game.IsRun IS NULL)  ORDER BY GAME_LIST_ITEM.Iorder ASC;"
+	
+	return sqlCmd
+
 end
 
 
