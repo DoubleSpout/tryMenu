@@ -177,6 +177,7 @@ function Mysql_CLass:getDateByDb()  --缓存没有命中，从数据库读取数
 		end
 		
 		if v['parentId'] == 0 then
+			v['writetime'] = nil
 			table.insert(notEmptyTemp,v)
 		else
 			for j,v2 in ipairs(self.menuTable) do
@@ -187,6 +188,13 @@ function Mysql_CLass:getDateByDb()  --缓存没有命中，从数据库读取数
 					if wt > maxWriteTime then
 						maxWriteTime = wt	
 					end
+					v['writetime'] = nil
+
+					if v['ItemType'] ~= 'GAME_WEBLINK' then
+						v['Width'] = nil
+						v['Height'] = nil
+					end
+
 					table.insert(idsTemp,v['Id'])
 					table.insert(notEmptyTemp,v)
 					break;
@@ -313,6 +321,7 @@ function Mysql_CLass:insertChild(curObj,item,num)
 		item[key] = item["EName"]
 	    end
 	end 
+
 	table.insert(curObj,item)  --将匹配的节点插入指定的Children中
 	self.removeKey = num		 --记录将要删除的self.menuTable项的位置
 	self.hasFound = 1
