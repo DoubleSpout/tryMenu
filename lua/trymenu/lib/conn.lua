@@ -7,3 +7,10 @@ connTable = {
 	user='root',
 	password='123456',
 }
+
+connRedis = {
+	host='192.168.20.62',
+	port=6379,
+	pool=30,
+	max_idle_timeout=1000*10,
+}

@@ -13,8 +13,11 @@ if err then
 	return ngx.say(err)
 end
 
---ngx.say(json)
+if args.noencode then
 
+	return ngx.say(json)
+
+end
 
 local XorKey = 4
 local s = ngx.encode_base64(json)
@@ -24,8 +27,6 @@ for i=1,#s do
 	table.insert(stable, string.char(bit.bxor(string.byte(s, i),XorKey)))	
 end
 local s2 = table.concat(stable)
-
-
 
 -- ngx.header["Content-Type"] = 'application/json; charset=UTF-8';
 

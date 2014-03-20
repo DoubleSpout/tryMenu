@@ -4,6 +4,7 @@ module("mysql_class2", package.seeall)
 local mysql = require "resty.mysql"
 local dbConn = require "conn"["connTable"]
 local dateLib = require "date"
+local RedisClass = require "redis_class"["Redis_Class"]
 
 local ERR_MYSQL_LIB = "could not open mysql library"
 local ERR_MYSQL_DB = "could not open mysql database"
@@ -28,7 +29,8 @@ function Mysql_CLass:initialize(reqTable)
     self.pool_size = 50
     self.reqTable = reqTable  --获得filter类的实例
     self.jsonTable={}
-
+    
+    self.ismain = false
 end
 
 
@@ -92,8 +94,20 @@ function Mysql_CLass:query_item()
 
 	 self.userVersion = self.reqTable.updatetime or nil -- 接受更新时间时间戳
 
+	 local redis = RedisClass:new(self.reqTable.city, self.userVersion)
+
+	 local err,str = redis:get_data()
+
+	 if not err and str then
+		return nil,str
+	 end
+
 	 local err,str =  self:getDateByDb() --数据库查询
-	
+	 
+	 if not err and str and not self.ismain then --如果正常生成str,则保存到缓存
+	      redis:set_data(str,self.version)
+	 end
+
 	 return err,str
 end
 
@@ -116,7 +130,7 @@ function Mysql_CLass:getDateByDb()  --缓存没有命中，从数据库读取数
 	 if not res then
 	      --如果表查询出错
 	      self:close_conn() -- 关闭数据库连接
-	      ngx.log(ngx.ERR, "get mysql data error: " .. err .. ": " .. errno .. ": ".. sqlstate .. ".") --出错记录错误日志	      
+	      ngx.log(ngx.ERR, "not get data") --出错记录错误日志	      
 	      return ERR_MYSQL_ERROR, nil
 	 end
 
@@ -125,12 +139,13 @@ function Mysql_CLass:getDateByDb()  --缓存没有命中，从数据库读取数
 	 if table.getn(res) == 0 then --如果没有查到数据,使用默认的
 			      
 		sqlCmd = self:genSqlCmd('main') -- 生成sql语句,使用main站点获取
+		self.ismain = true --表示从主站读取
 		res, err, errno, sqlstate =  db:query(sqlCmd) --查询 ApiServices 表
 		
 		if not res or table.getn(res)==0 then
 		      --如果表查询出错
 		      self:close_conn() -- 关闭数据库连接
-		      ngx.log(ngx.ERR, "get mysql data main site error: " .. err .. ": " .. errno .. ": ".. sqlstate .. ".") --出错记录错误日志	      
+		      ngx.log(ngx.ERR, "no res or get err err is:" .. (err or "")) --出错记录错误日志	      
 		      return ERR_MYSQL_ERROR, nil
 		 end
 
@@ -186,9 +201,9 @@ function Mysql_CLass:getDateByDb()  --缓存没有命中，从数据库读取数
 	
 	 self.version = ngx.md5(versionStr) --生成版本号
 
-	 if self.version == self.userVersion then
-		return nil,'cache'
-	 end 
+	 --if self.version == self.userVersion then
+	 --	return nil,'cache'
+	 -- end 
 
 	 self.menuTable = self:filterEmpty() -- 去除空房间的节点
 
@@ -216,14 +231,20 @@ function Mysql_CLass:genSqlCmd(site) --创建数据库查询字符串
 
 	local now = os.date("%Y-%m-%d %H:%M:%S", os.time())
 	
-	local property = "GAME_LIST_ITEM.Id, ItemType, Itemname, ItemNewTip, ItemExtraTip, Changed, parentId, Icon, ItemID, ItemUrl, OpenType, Width, Height, ItemParent, mycategorycode, HelpURL, ServerVersion, EName, channelcode, rootcode, mygamecode, WatchCrash, ServerID, GameServerAddr, GameServerPort, MinVer, MaxVer, MaxUser, GameTypeName,"
+	local property = "GAME_LIST_ITEM.Id, ItemType, Itemname, ItemNewTip, ItemExtraTip, Changed, parentId, Icon, ItemID, ItemUrl, OpenType, Width, Height, ItemParent, mycategorycode, HelpURL, ServerVersion, EName, channelcode, rootcode, mygamecode, WatchCrash, ServerID, GameServerAddr, GameServerPort, MinVer, MaxVer, MaxUser, GameTypeName, Game.ProgName,"
 	
 	local writeTimeCol = '(CASE\n'..
 		'WHEN GAME_LIST_ITEM.writetime > IFNULL(Game.writetime, \'2000-01-01\')  THEN GAME_LIST_ITEM.writetime \n'..
 		'ELSE IFNULL(Game.writetime, \'2000-01-01\') \n'..
 		'END ) AS writetime'
 
-	local sqlCmd = "select "..property..writeTimeCol.." from GAME_LIST_ITEM INNER join GAME_SITE on (GAME_LIST_ITEM.GAME_SITEId = GAME_SITE.Id) left join Game on (GAME_LIST_ITEM.GameId = Game.Id) WHERE GAME_LIST_ITEM.is_show=1 AND GAME_SITE.sitename="..ngx.quote_sql_str(site).." AND GAME_LIST_ITEM.BeginTime < '"..now.."' AND GAME_LIST_ITEM.EndTime > '"..now.."' AND (Game.IsRun = 1 or Game.IsRun IS NULL)  ORDER BY GAME_LIST_ITEM.Iorder ASC;"
+	local sqlCmd = "select "..property..writeTimeCol.." from GAME_LIST_ITEM left join Game on (GAME_LIST_ITEM.GameId = Game.Id) WHERE "..
+	" GAME_SITEId =( SELECT Id FROM GAME_SITE WHERE sitename="..ngx.quote_sql_str(site)..")"..
+	" AND GAME_LIST_ITEM.is_show=1"..
+	" AND  GAME_LIST_ITEM.BeginTime < '"..now.."'"..
+	" AND GAME_LIST_ITEM.EndTime > '"..now.."'"..
+	" AND (Game.IsRun = 1 or Game.IsRun IS NULL)"..
+	" ORDER BY GAME_LIST_ITEM.Iorder ASC;"
 	
 	return sqlCmd
 
