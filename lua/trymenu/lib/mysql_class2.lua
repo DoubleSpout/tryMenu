@@ -87,14 +87,18 @@ function Mysql_CLass:query_item()
 	 if not self.reqTable.city then	        
 		return ERR_NO_CITY, nil
 	 end
+	 
+	 self.reqTable.city = string.sub(self.reqTable.city,1,32) --取前面32位字符串
 
-	 local updatetime = self.reqTable.updatetime -- 接受更新时间时间戳
+	 self.userVersion = self.reqTable.updatetime or nil -- 接受更新时间时间戳
 
-	 if updatetime then -- 将updatetime转为dateLib对象
-		updatetime = dateLib(tonumber(updatetime)):tolocal()
-	 end
+	 local err,str =  self:getDateByDb() --数据库查询
 	
-	
+	 return err,str
+end
+
+ 
+function Mysql_CLass:getDateByDb()  --缓存没有命中，从数据库读取数据
 
 	 local err,db = self:connect() --连接mysql数据库
 
@@ -103,12 +107,12 @@ function Mysql_CLass:query_item()
 		return err,nil
 	 end
 	 
-	local sqlCmd = self:genSqlCmd(self.reqTable.city) -- 生成sql语句
+	 local sqlCmd = self:genSqlCmd(self.reqTable.city) -- 生成sql语句
 
 	 --ngx.log(ngx.ERR, sqlCmd) 
 	 
-	 local res, err, errno, sqlstate = db:query(sqlCmd) --查询 ApiServices 表
-	
+	 local res, err, errno, sqlstate = db:query(sqlCmd) -- 执行sql语句
+	 
 	 if not res then
 	      --如果表查询出错
 	      self:close_conn() -- 关闭数据库连接
@@ -116,8 +120,10 @@ function Mysql_CLass:query_item()
 	      return ERR_MYSQL_ERROR, nil
 	 end
 
+	-- get by db
+
 	 if table.getn(res) == 0 then --如果没有查到数据,使用默认的
-		
+			      
 		sqlCmd = self:genSqlCmd('main') -- 生成sql语句,使用main站点获取
 		res, err, errno, sqlstate =  db:query(sqlCmd) --查询 ApiServices 表
 		
@@ -129,42 +135,60 @@ function Mysql_CLass:query_item()
 		 end
 
 	 end
+	
+	
 	 
 	 self:close_conn() -- 关闭数据库连接
 
 	 self.menuTable = res --将查出的table保存在 self.menuTable 中
+	 	 
+	 local notEmptyTemp={} -- 暂时保存必须有父类的节点数组
+	 local idsTemp = {} --临时存放id的数组，用于生成version版本号
 	 
-	 local forceUpdate = 0
-	
+	 local maxWriteTime = self.menuTable[1]['writetime']
 
-	 for i,v in ipairs(self.menuTable) do --循环剔除值为nil的属性
-		for key in pairs(v) do 
-		    
+	 if maxWriteTime == ngx.null or not maxWriteTime then
+		maxWriteTime =  '1970-01-01 00:00:00'
+	 end
+	  
+	 maxWriteTime = dateLib(maxWriteTime) --默认第一个为最大写入时间
+
+	 for i,v in ipairs(self.menuTable) do --循环剔除值为nil的属性,和野孩子
+		
+		for key in pairs(v) do 	    
 		    if v[key] == ngx.null or v[key] == '' or v[key] == 'NULL' then --lua中返回的mysql数据null值为ngx.null
 			v[key] = nil
-		    end
-
-		    if v['ItemType'] == 'GAME_ROOT' then
-		       v['updatetime'] = tostring(os.time())
-		    end
-
-		    local writetime = dateLib(v['writetime'])
-
-		    if  updatetime and writetime>updatetime then
-			--ngx.log(ngx.ERR, tostring(writetime))
-			--ngx.log(ngx.ERR, tostring(updatetime))
-			--ngx.log(ngx.ERR, tostring(self.reqTable.updatetime))
-			--ngx.log(ngx.ERR, '**********')
-			forceUpdate = forceUpdate + 1
-		    end
-		    
+		    end		    		
+		end
 		
-		end 
+		if v['parentId'] == 0 then
+			table.insert(notEmptyTemp,v)
+		else
+			for j,v2 in ipairs(self.menuTable) do
+				if v['parentId'] == v2['Id'] then --如果此节点找到父类，则放入零时数组中，并跳出循环
+
+					local wt = dateLib(v['writetime'] or '1970-01-01 00:00:00')
+				
+					if wt > maxWriteTime then
+						maxWriteTime = wt	
+					end
+					table.insert(idsTemp,v['Id'])
+					table.insert(notEmptyTemp,v)
+					break;
+				end
+			end
+		end
 	 end
 	 
-	 if updatetime and forceUpdate == 0 then
-		return nil,"cache"
-	 end
+	 self.menuTable = notEmptyTemp --将没有野孩子的数组重新赋值给 self.menuTable
+
+	 local versionStr = table.concat(idsTemp) .. tostring(maxWriteTime) --生成待md5生成的版本号字符串
+	
+	 self.version = ngx.md5(versionStr) --生成版本号
+
+	 if self.version == self.userVersion then
+		return nil,'cache'
+	 end 
 
 	 self.menuTable = self:filterEmpty() -- 去除空房间的节点
 
@@ -175,7 +199,7 @@ function Mysql_CLass:query_item()
 	 end
 
 	 local ok,err = pcall(function() --转换成json字符串
-	       self.jsonStr = cjson.encode(self.jsonTable[1])
+	       self.jsonStr = cjson.encode(self.jsonTable[1]) -- 生成json字符串
 	 end)
 	 
 	 if err then 
@@ -183,16 +207,23 @@ function Mysql_CLass:query_item()
 	 end
 	 
 	 return nil,self.jsonStr
-	  
+
 end
+
 
 
 function Mysql_CLass:genSqlCmd(site) --创建数据库查询字符串
 
 	local now = os.date("%Y-%m-%d %H:%M:%S", os.time())
+	
+	local property = "GAME_LIST_ITEM.Id, ItemType, Itemname, ItemNewTip, ItemExtraTip, Changed, parentId, Icon, ItemID, ItemUrl, OpenType, Width, Height, ItemParent, mycategorycode, HelpURL, ServerVersion, EName, channelcode, rootcode, mygamecode, WatchCrash, ServerID, GameServerAddr, GameServerPort, MinVer, MaxVer, MaxUser, GameTypeName,"
+	
+	local writeTimeCol = '(CASE\n'..
+		'WHEN GAME_LIST_ITEM.writetime > IFNULL(Game.writetime, \'2000-01-01\')  THEN GAME_LIST_ITEM.writetime \n'..
+		'ELSE IFNULL(Game.writetime, \'2000-01-01\') \n'..
+		'END ) AS writetime'
 
-	local property = "GAME_LIST_ITEM.Id, ItemType, Itemname, ItemNewTip, ItemExtraTip, Changed, parentId, Icon, ItemID, ItemUrl, OpenType, Width, Height, ItemParent, mycategorycode, HelpURL, ServerVersion, EName, channelcode, rootcode, mygamecode, WatchCrash, ServerID, GameServerAddr, GameServerPort, MinVer, MaxVer, MaxUser, GameTypeName, GAME_LIST_ITEM.writetime"
-	local sqlCmd = "select "..property.." from GAME_LIST_ITEM left join GAME_SITE on (GAME_LIST_ITEM.GAME_SITEId = GAME_SITE.Id) left join Game on (GAME_LIST_ITEM.GameId = Game.Id) WHERE GAME_LIST_ITEM.is_show=1 AND GAME_SITE.sitename="..ngx.quote_sql_str(site).." AND GAME_LIST_ITEM.BeginTime < '"..now.."' AND GAME_LIST_ITEM.EndTime > '"..now.."' AND (Game.IsRun = 1 or Game.IsRun IS NULL)  ORDER BY GAME_LIST_ITEM.Iorder ASC;"
+	local sqlCmd = "select "..property..writeTimeCol.." from GAME_LIST_ITEM INNER join GAME_SITE on (GAME_LIST_ITEM.GAME_SITEId = GAME_SITE.Id) left join Game on (GAME_LIST_ITEM.GameId = Game.Id) WHERE GAME_LIST_ITEM.is_show=1 AND GAME_SITE.sitename="..ngx.quote_sql_str(site).." AND GAME_LIST_ITEM.BeginTime < '"..now.."' AND GAME_LIST_ITEM.EndTime > '"..now.."' AND (Game.IsRun = 1 or Game.IsRun IS NULL)  ORDER BY GAME_LIST_ITEM.Iorder ASC;"
 	
 	return sqlCmd
 
@@ -228,8 +259,9 @@ function Mysql_CLass:genJsonTable() --创建json字符串
 end
 
 function Mysql_CLass:traversalTable(currentTable, parentId, item, num)
-
+	
 	if parentId == 0 then
+		item['updatetime'] = self.version
 		self:insertChild(currentTable,item,num) -- 根节点
 		return
 	end

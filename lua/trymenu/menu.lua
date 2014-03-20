@@ -13,6 +13,8 @@ if err then
 	return ngx.say(err)
 end
 
+--ngx.say(json)
+
 
 local XorKey = 4
 local s = ngx.encode_base64(json)
