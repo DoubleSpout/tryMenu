@@ -67,7 +67,7 @@ function Redis_Class:get_data() -- 获取redis缓存数据
 
 	local now = tonumber(os.time()) --获得当前时间
 
-	local res, err = red:get("lastCacheTime") --获取上次缓存时间
+	local res, err = red:get(self.city..'_lastCacheTime') --获取上次缓存时间
         if err then --如果失败
 	    self:close_conn()
 	    ngx.log(ngx.ERR, "failed to get lastCacheTime: ", err)
@@ -152,11 +152,15 @@ function Redis_Class:set_data(jsonstr,version)
 	
 	local keyJson = self.city .. '_json' -- 城市json字符串key
 	local keyVersion = self.city .. '_version' -- 城市版本号key
-
+	local cacheTime = self.city..'_lastCacheTime'
 	red:init_pipeline() --管道生成
-	red:set('lastCacheTime', os.time()) -- 存入城市json缓存
+
+	red:set(cacheTime, os.time()) -- 存入城市json缓存
+	red:expire(cacheTime, 60*2)
 	red:set(keyJson, jsonstr) -- 存入城市json缓存
+	red:expire(keyJson, 60*2)
 	red:set(keyVersion, version) -- 存入城市版本号值
+	red:expire(keyVersion, 60*2)
 
 	local res, err = red:commit_pipeline() --执行
 	self:close_conn()
