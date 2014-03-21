@@ -16,7 +16,6 @@ if err then
 end
 
 if args.noencode then
-
 	ngx.say(json)
 else
 

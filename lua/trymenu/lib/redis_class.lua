@@ -144,6 +144,11 @@ end
 
 function Redis_Class:set_data(jsonstr,version)
 	
+
+	ngx.log(ngx.INFO, jsonstr)
+	ngx.log(ngx.INFO, version)
+
+
 	local err, red = self:connect()
 	
 	if err then
@@ -157,8 +162,12 @@ function Redis_Class:set_data(jsonstr,version)
 
 	red:set(cacheTime, os.time()) -- 存入城市json缓存
 	red:expire(cacheTime, 60*2)
-	red:set(keyJson, jsonstr) -- 存入城市json缓存
-	red:expire(keyJson, 60*2)
+
+	if jsonstr ~= 'cache' then
+		red:set(keyJson, jsonstr) -- 存入城市json缓存
+		red:expire(keyJson, 60*2)
+	end
+
 	red:set(keyVersion, version) -- 存入城市版本号值
 	red:expire(keyVersion, 60*2)
 

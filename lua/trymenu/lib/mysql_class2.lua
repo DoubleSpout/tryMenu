@@ -209,9 +209,9 @@ function Mysql_CLass:getDateByDb()  --缓存没有命中，从数据库读取数
 	
 	 self.version = ngx.md5(versionStr) --生成版本号
 
-	 --if self.version == self.userVersion then
-	 --	return nil,'cache'
-	 -- end 
+	 if self.version == self.userVersion then
+	 	return nil,'cache'
+	 end 
 
 	 self.menuTable = self:filterEmpty() -- 去除空房间的节点
 
