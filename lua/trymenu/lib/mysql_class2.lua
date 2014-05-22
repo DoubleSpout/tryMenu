@@ -239,7 +239,7 @@ function Mysql_CLass:genSqlCmd(site) --创建数据库查询字符串
 
 	local now = os.date("%Y-%m-%d %H:%M:%S", os.time())
 	
-	local property = "GAME_LIST_ITEM.Id, ItemType, Itemname, ItemNewTip, ItemExtraTip, Changed, parentId, Icon, ItemID, ItemUrl, OpenType, Width, Height, ItemParent, mycategorycode, HelpURL, ServerVersion, EName, channelcode, rootcode, mygamecode, WatchCrash, ServerID, GameServerAddr, GameServerPort, MinVer, MaxVer, MaxUser, GameTypeName, Game.ProgName, GAME_LIST_ITEM.Extend,"
+	local property = "GAME_LIST_ITEM.Id, ItemType, Itemname, ItemNewTip, ItemExtraTip, Changed, parentId, Icon, ItemID, ItemUrl, OpenType, Width, Height, ItemParent, mycategorycode, HelpURL, ServerVersion, EName, channelcode, rootcode, mygamecode, WatchCrash, ServerID, GameServerAddr, GameServerPort, MinVer, MaxVer, MaxUser, GameTypeName, Game.ProgName, Game.MatchTypeName, GAME_LIST_ITEM.Extend,"
 	
 	local writeTimeCol = '(CASE\n'..
 		'WHEN GAME_LIST_ITEM.writetime > IFNULL(Game.writetime, \'2000-01-01\')  THEN GAME_LIST_ITEM.writetime \n'..
